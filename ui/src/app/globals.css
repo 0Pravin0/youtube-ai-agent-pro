@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Bundled fonts (offline, no network on startup): Anek Tamil (OFL) for UI text incl. Tamil. */
+@font-face { font-family: "Anek Tamil"; font-weight: 400 700; font-display: swap; src: url("/fonts/anek-tamil-tamil-wght-normal.woff2") format("woff2"); unicode-range: U+0B80-0BFF, U+200C-200D, U+25CC; }
+@font-face { font-family: "Anek Tamil"; font-weight: 400 700; font-display: swap; src: url("/fonts/anek-tamil-latin-wght-normal.woff2") format("woff2"); }
+
+/* Story-night palette (dark default) + paper light theme. Tokens are consumed via Tailwind arbitrary
+   values like bg-[var(--panel)] so both themes share one markup. */
+:root {
+  --bg: #17142f;
+  --panel: #201c40;
+  --panel-2: #282350;
+  --line: #332e5e;
+  --text: #eeeafe;
+  --muted: #a6a1cf;
+  --marigold: #f2a93b;
+  --marigold-ink: #2a1a00;
+  --teal: #2bb3a3;
+  --kumkum: #e5484d;
+  --violet: #8b7cf6;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f7f5fd;
+  --panel: #ffffff;
+  --panel-2: #efecfa;
+  --line: #dcd7f0;
+  --text: #1e1b3f;
+  --muted: #615c8c;
+  --marigold: #9a5800;
+  --marigold-ink: #fffaf0;
+  --teal: #12857a;
+  --kumkum: #c62a30;
+  --violet: #5b4bd6;
+  color-scheme: light;
+}
+
+@theme {
+  --font-sans: "Anek Tamil", "Noto Sans Tamil", system-ui, sans-serif;
+}
+
+html, body { background: var(--bg); color: var(--text); }
+body { font-family: var(--font-sans); font-size: 15px; line-height: 1.5; font-feature-settings: "tnum" 1; }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--marigold); outline-offset: 2px; border-radius: 4px; }
+::selection { background: var(--marigold); color: var(--marigold-ink); }
+
+/* The kolam thread: the dashboard's one animated element. */
+@keyframes kolam-pulse { 0%, 100% { transform: scale(1); opacity: 1 } 50% { transform: scale(1.45); opacity: .55 } }
+.kolam-current { animation: kolam-pulse 1.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@media (prefers-reduced-motion: reduce) { .kolam-current { animation: none } }
+
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th { text-align: left; font-weight: 500; color: var(--muted); font-size: 13px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.tbl td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: 0; }

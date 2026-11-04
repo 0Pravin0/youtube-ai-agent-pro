@@ -1,0 +1,7 @@
+# Tamil voice engine (Indic Parler-TTS). Locked with hashes for macOS arm64 / Python 3.12 by scripts/lock_deps.py
+parler-tts==0.2.3
+torch
+torchaudio
+soundfile
+sentencepiece
+huggingface_hub

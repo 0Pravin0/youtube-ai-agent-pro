@@ -1,0 +1,116 @@
+import enum
+
+
+class JobStage(str, enum.Enum):
+    QUEUED = "QUEUED"
+    RESEARCHING = "RESEARCHING"
+    IDEA_SELECTED = "IDEA_SELECTED"
+    SCRIPT_GENERATION = "SCRIPT_GENERATION"
+    SCRIPT_VALIDATION = "SCRIPT_VALIDATION"
+    STORYBOARD = "STORYBOARD"
+    CHARACTER_GENERATION = "CHARACTER_GENERATION"
+    IMAGE_GENERATION = "IMAGE_GENERATION"
+    VIDEO_GENERATION = "VIDEO_GENERATION"
+    VOICE_GENERATION = "VOICE_GENERATION"
+    AUDIO_PROCESSING = "AUDIO_PROCESSING"
+    VIDEO_EDITING = "VIDEO_EDITING"
+    RENDERING = "RENDERING"
+    QUALITY_VALIDATION = "QUALITY_VALIDATION"
+    THUMBNAIL_GENERATION = "THUMBNAIL_GENERATION"
+    SEO_GENERATION = "SEO_GENERATION"
+    READY_TO_UPLOAD = "READY_TO_UPLOAD"
+    UPLOADING = "UPLOADING"
+    YOUTUBE_PROCESSING = "YOUTUBE_PROCESSING"
+    SCHEDULED = "SCHEDULED"
+    PUBLISHED = "PUBLISHED"
+    ANALYTICS_MONITORING = "ANALYTICS_MONITORING"
+    COMPLETED = "COMPLETED"
+    # control states
+    RETRYING = "RETRYING"
+    PAUSED = "PAUSED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    BLOCKED_BY_PROVIDER = "BLOCKED_BY_PROVIDER"
+
+
+PIPELINE: list[JobStage] = [
+    JobStage.QUEUED, JobStage.RESEARCHING, JobStage.IDEA_SELECTED, JobStage.SCRIPT_GENERATION,
+    JobStage.SCRIPT_VALIDATION, JobStage.STORYBOARD, JobStage.CHARACTER_GENERATION,
+    JobStage.IMAGE_GENERATION, JobStage.VIDEO_GENERATION, JobStage.VOICE_GENERATION,
+    JobStage.AUDIO_PROCESSING, JobStage.VIDEO_EDITING, JobStage.RENDERING,
+    JobStage.QUALITY_VALIDATION, JobStage.THUMBNAIL_GENERATION, JobStage.SEO_GENERATION,
+    JobStage.READY_TO_UPLOAD, JobStage.UPLOADING, JobStage.YOUTUBE_PROCESSING,
+    JobStage.SCHEDULED, JobStage.PUBLISHED, JobStage.ANALYTICS_MONITORING, JobStage.COMPLETED,
+]
+CONTROL_STATES = {JobStage.RETRYING, JobStage.PAUSED, JobStage.FAILED, JobStage.CANCELLED,
+                  JobStage.BLOCKED_BY_PROVIDER}
+TERMINAL_STATES = {JobStage.COMPLETED, JobStage.FAILED, JobStage.CANCELLED}
+
+
+class VideoFormat(str, enum.Enum):
+    SHORT = "SHORT"
+    LONG = "LONG"
+
+
+class AutomationMode(str, enum.Enum):
+    FULL_AUTO = "FULL_AUTO"
+    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"  # pipeline runs, publishing waits for owner
+    MANUAL = "MANUAL"  # nothing starts unless the owner clicks
+
+
+class AutomationState(str, enum.Enum):
+    RUNNING = "RUNNING"
+    PAUSED = "PAUSED"
+    STOPPED = "STOPPED"
+
+
+class ProviderKind(str, enum.Enum):
+    LLM = "LLM"
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    TTS = "TTS"
+    RESEARCH = "RESEARCH"
+    YOUTUBE = "YOUTUBE"
+
+
+class ProviderStatus(str, enum.Enum):
+    UNCONFIGURED = "UNCONFIGURED"  # no credentials
+    UNVERIFIED = "UNVERIFIED"  # credentials present, never tested
+    AVAILABLE = "AVAILABLE"  # last live test passed
+    UNAVAILABLE = "UNAVAILABLE"  # last live test failed
+    DISABLED = "DISABLED"
+
+
+class AssetKind(str, enum.Enum):
+    CHARACTER_REFERENCE = "CHARACTER_REFERENCE"
+    SCENE_IMAGE = "SCENE_IMAGE"
+    SCENE_VIDEO = "SCENE_VIDEO"
+    VOICE_LINE = "VOICE_LINE"
+    MIXED_AUDIO = "MIXED_AUDIO"
+    MUSIC = "MUSIC"
+    SUBTITLE = "SUBTITLE"
+    RENDER = "RENDER"
+    THUMBNAIL = "THUMBNAIL"
+    CHARACTER_SPRITE = "CHARACTER_SPRITE"
+    SOUND_EFFECT = "SOUND_EFFECT"
+
+
+class MotionKind(str, enum.Enum):
+    GENERATED_VIDEO = "GENERATED_VIDEO"  # true AI-generated motion
+    STILL_CAMERA_MOTION = "STILL_CAMERA_MOTION"  # camera moves over a still illustration (animated-image storytelling)
+    LAYERED_ANIMATION = "LAYERED_ANIMATION"  # cut-out character sprites animated over a parallax background (motion-comic)
+
+
+class UploadStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    UPLOADED = "UPLOADED"
+    FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+
+
+class NotificationLevel(str, enum.Enum):
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    ACTION_REQUIRED = "ACTION_REQUIRED"

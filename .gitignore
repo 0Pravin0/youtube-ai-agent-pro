@@ -1,0 +1,14 @@
+node_modules/
+ui/.next/
+ui/out-build/
+src-tauri/target/
+src-tauri/gen/
+build/
+backend/build/
+backend/dist/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.key
+*.key.pub.local
+.env

@@ -1,0 +1,177 @@
+# Build, test and (for version tags) publish YouTube AI Agent Pro for Apple Silicon Macs.
+#
+#  push to main / pull request  -> tests + full .app/.dmg build + smoke tests, uploaded as workflow artifacts
+#  push tag vX.Y.Z              -> same, then a GitHub Release with the DMG, the signed updater archive and
+#                                  latest.json (the in-app updater's endpoint)
+#
+# Secrets (Settings -> Secrets and variables -> Actions):
+#   TAURI_SIGNING_PRIVATE_KEY, TAURI_SIGNING_PRIVATE_KEY_PASSWORD   (required: signs updates)
+#   HF_TOKEN                                                        (optional: locks the gated Tamil voice model)
+#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID                         (optional: Developer ID signing + notarization)
+name: macOS build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-14   # Apple Silicon (M1) runner
+    timeout-minutes: 120
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version matches tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          test "v$V" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != app version $V"; exit 1; }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: arm64
+
+      - name: Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt pytest "pyinstaller>=6.11" uv
+          python -c "import platform;print(platform.machine(), platform.mac_ver())"
+
+      - name: FFmpeg (bundled into the app) + tools
+        run: |
+          brew install ffmpeg dylibbundler minisign
+          scripts/bundle_ffmpeg.sh build/engine/bin
+          mkdir -p build/licenses
+          printf "This app runs FFmpeg as a separate program (engine/bin). FFmpeg is licensed under the GNU GPL.\nSource: https://ffmpeg.org/download.html  Build: Homebrew $(brew info --json=v2 ffmpeg | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"formulae\"][0][\"versions\"][\"stable\"])')\n" > build/licenses/FFMPEG.txt
+
+      - name: Engine tests (on Apple Silicon, real FFmpeg)
+        working-directory: backend
+        env:
+          YTA_FFMPEG_BIN: ${{ github.workspace }}/build/engine/bin/ffmpeg
+          YTA_FFPROBE_BIN: ${{ github.workspace }}/build/engine/bin/ffprobe
+        run: python -m pytest -q -p no:logging
+
+      - name: Lock pinned free tools (versions + checksums shipped in the app)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: python scripts/lock_deps.py
+
+      - name: Package the engine (PyInstaller, arm64)
+        working-directory: backend
+        run: |
+          pyinstaller --noconfirm yta-engine.spec
+          cp -R dist/yta-engine/. ../build/engine/
+          file ../build/engine/yta-engine
+
+      - name: Smoke-test the packaged engine
+        run: python scripts/smoke_engine.py build/engine/yta-engine --version "$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")"
+
+      - name: Upgrade test against the previous release (data must survive)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName' || true)
+          if [ -z "$PREV" ]; then echo "No previous release yet — skipping upgrade test."; exit 0; fi
+          mkdir -p /tmp/prev && gh release download "$PREV" --pattern "*.app.tar.gz" --dir /tmp/prev
+          tar -xzf /tmp/prev/*.app.tar.gz -C /tmp/prev
+          OLD=$(find /tmp/prev -path "*Contents/Resources/engine/yta-engine" -type f | head -1)
+          python scripts/smoke_engine.py build/engine/yta-engine --old "$OLD" \
+            --version "$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Build the interface
+        working-directory: ui
+        run: npm ci && npm run build
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Optional Apple Developer ID signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "APPLE_CERTIFICATE=${{ secrets.APPLE_CERTIFICATE }}" >> "$GITHUB_ENV"
+            echo "APPLE_CERTIFICATE_PASSWORD=${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}" >> "$GITHUB_ENV"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}" >> "$GITHUB_ENV"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}" >> "$GITHUB_ENV"
+            echo "Developer ID signing + notarization enabled."
+          else
+            echo "No Apple certificate configured: the app is ad-hoc signed (first launch needs right-click → Open)."
+          fi
+
+      - name: Release notes
+        id: notes
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          python3 scripts/release_notes.py "$V" > /tmp/notes.md
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Build app + DMG (+ publish release for tags)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: src-tauri
+          args: --target aarch64-apple-darwin
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: YouTube AI Agent Pro ${{ steps.notes.outputs.version }}
+          releaseBodyPath: /tmp/notes.md
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+
+      - name: Verify updater signature + launch the built app
+        run: |
+          B=src-tauri/target/aarch64-apple-darwin/release/bundle
+          ls -la $B/macos $B/dmg
+          scripts/verify_updater_sig.sh "$(ls $B/macos/*.app.tar.gz | head -1)" src-tauri/tauri.conf.json
+          scripts/smoke_app.sh "$(ls -d $B/macos/*.app | head -1)"
+          cp "$(ls $B/dmg/*.dmg | head -1)" YouTube-AI-Agent-Pro-macOS-arm64.dmg
+          shasum -a 256 YouTube-AI-Agent-Pro-macOS-arm64.dmg | tee YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256
+
+      - name: Attach the DMG with its fixed name
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" YouTube-AI-Agent-Pro-macOS-arm64.dmg YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256 --clobber
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YouTube-AI-Agent-Pro-macOS-arm64
+          path: |
+            YouTube-AI-Agent-Pro-macOS-arm64.dmg
+            YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256
+            src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
+          retention-days: 30
