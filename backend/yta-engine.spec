@@ -8,7 +8,7 @@ hidden = (
     collect_submodules("app")
     + collect_submodules("uvicorn")
     + collect_submodules("keyring.backends")
-    + collect_submodules("mcp")
+    + collect_submodules("mcp", filter=lambda n: not n.startswith("mcp.cli"))  # CLI extra not used
     + collect_submodules("mcp_types")
     + ["sse_starlette", "multipart", "python_multipart", "tzdata", "httpx2"]
 )
