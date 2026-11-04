@@ -4,7 +4,11 @@
 set -euo pipefail
 OUT="$1"                       # e.g. build/engine/bin
 mkdir -p "$OUT/libs"
-cp "$(brew --prefix ffmpeg)/bin/ffmpeg" "$(brew --prefix ffmpeg)/bin/ffprobe" "$OUT/"
+# ffmpeg-full is Homebrew's build with libass/HarfBuzz/FreeType (needed for Tamil subtitles and titles)
+FF="$(brew --prefix ffmpeg-full 2>/dev/null || true)"
+[ -x "$FF/bin/ffmpeg" ] || FF="$(brew --prefix ffmpeg)"
+echo "using FFmpeg from $FF"
+cp "$FF/bin/ffmpeg" "$FF/bin/ffprobe" "$OUT/"
 chmod u+w "$OUT/ffmpeg" "$OUT/ffprobe"
 dylibbundler -of -b -x "$OUT/ffmpeg" -x "$OUT/ffprobe" -d "$OUT/libs" -p @executable_path/libs/ >/dev/null
 for f in "$OUT"/libs/*.dylib "$OUT/ffmpeg" "$OUT/ffprobe"; do codesign --force --sign - "$f"; done

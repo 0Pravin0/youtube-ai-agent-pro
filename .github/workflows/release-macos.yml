@@ -1,7 +1,7 @@
 # Build, test and (for version tags) publish YouTube AI Agent Pro for Apple Silicon Macs.
 #
 #  push to main / pull request  -> tests + full .app/.dmg build + smoke tests, uploaded as workflow artifacts
-#  push tag vX.Y.Z              -> same, then a GitHub Release with the DMG, the signed updater archive and
+#  new version on main / tag vX.Y.Z -> same, then a GitHub Release with the DMG, the signed updater archive and
 #                                  latest.json (the in-app updater's endpoint)
 #
 # Secrets (Settings -> Secrets and variables -> Actions):
@@ -55,10 +55,10 @@ jobs:
 
       - name: FFmpeg (bundled into the app) + tools
         run: |
-          brew install ffmpeg dylibbundler minisign
+          brew install ffmpeg-full dylibbundler minisign
           scripts/bundle_ffmpeg.sh build/engine/bin
           mkdir -p build/licenses
-          printf "This app runs FFmpeg as a separate program (engine/bin). FFmpeg is licensed under the GNU GPL.\nSource: https://ffmpeg.org/download.html  Build: Homebrew $(brew info --json=v2 ffmpeg | python3 -c 'import json,sys;print(json.load(sys.stdin)[\"formulae\"][0][\"versions\"][\"stable\"])')\n" > build/licenses/FFMPEG.txt
+          printf "This app runs FFmpeg as a separate program (engine/bin). FFmpeg is licensed under the GNU GPL.\nSource: https://ffmpeg.org/download.html  Build: Homebrew ffmpeg-full $(brew list --versions ffmpeg-full)\n" > build/licenses/FFMPEG.txt
 
       - name: Engine tests (on Apple Silicon, real FFmpeg)
         working-directory: backend
@@ -142,12 +142,20 @@ jobs:
             echo "signed=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Release notes
+      - name: Release notes + decide whether to publish
         id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           V=$(python3 -c "import json;print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
           python3 scripts/release_notes.py "$V" > /tmp/notes.md
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          # publish when this version has no release yet (a version bump on main), or for a version tag
+          if [ "${GITHUB_REF}" = "refs/tags/v$V" ] || { [ "${GITHUB_REF}" = "refs/heads/main" ] && ! gh release view "v$V" >/dev/null 2>&1; }; then
+            echo "tag=v$V" >> "$GITHUB_OUTPUT"; echo "Publishing release v$V"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"; echo "Build only (v$V already released)"
+          fi
 
       - name: Build app + DMG (+ publish release for tags)
         uses: tauri-apps/tauri-action@v0
@@ -158,7 +166,7 @@ jobs:
         with:
           projectPath: src-tauri
           args: ${{ steps.sign.outputs.args }}
-          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          tagName: ${{ steps.notes.outputs.tag }}
           releaseName: YouTube AI Agent Pro ${{ steps.notes.outputs.version }}
           releaseBodyPath: /tmp/notes.md
           releaseDraft: false
@@ -177,10 +185,10 @@ jobs:
           shasum -a 256 YouTube-AI-Agent-Pro-macOS-arm64.dmg | tee YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256
 
       - name: Attach the DMG with its fixed name
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.notes.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "$GITHUB_REF_NAME" YouTube-AI-Agent-Pro-macOS-arm64.dmg YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256 --clobber
+        run: gh release upload "${{ steps.notes.outputs.tag }}" YouTube-AI-Agent-Pro-macOS-arm64.dmg YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256 --clobber
 
       - uses: actions/upload-artifact@v4
         with:
