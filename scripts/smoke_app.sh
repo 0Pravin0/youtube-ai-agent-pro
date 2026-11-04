@@ -2,7 +2,7 @@
 # Launch the built .app like a user would (the real binary), wait for its engine, check health, quit.
 set -euo pipefail
 APP="$1"
-BIN="$APP/Contents/MacOS/$(defaults read "$APP/Contents/Info.plist" CFBundleExecutable)"
+BIN="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Contents/Info.plist")"
 "$BIN" > /tmp/yta-app.log 2>&1 &
 PID=$!
 for i in $(seq 1 120); do
