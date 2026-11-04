@@ -129,6 +129,19 @@ jobs:
             echo "No Apple certificate configured: the app is ad-hoc signed (first launch needs right-click → Open)."
           fi
 
+      - name: Updater signing key present?
+        id: sign
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "args=--target aarch64-apple-darwin" >> "$GITHUB_OUTPUT"; echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::TAURI_SIGNING_PRIVATE_KEY is not set: building the DMG without signed in-app update files."
+            echo 'args=--target aarch64-apple-darwin --config {"bundle":{"createUpdaterArtifacts":false}}' >> "$GITHUB_OUTPUT"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Release notes
         id: notes
         run: |
@@ -144,19 +157,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           projectPath: src-tauri
-          args: --target aarch64-apple-darwin
+          args: ${{ steps.sign.outputs.args }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: YouTube AI Agent Pro ${{ steps.notes.outputs.version }}
           releaseBodyPath: /tmp/notes.md
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ steps.sign.outputs.signed == 'true' }}
 
       - name: Verify updater signature + launch the built app
         run: |
           B=src-tauri/target/aarch64-apple-darwin/release/bundle
           ls -la $B/macos $B/dmg
-          scripts/verify_updater_sig.sh "$(ls $B/macos/*.app.tar.gz | head -1)" src-tauri/tauri.conf.json
+          if [ "${{ steps.sign.outputs.signed }}" = "true" ]; then
+            scripts/verify_updater_sig.sh "$(ls $B/macos/*.app.tar.gz | head -1)" src-tauri/tauri.conf.json
+          fi
           scripts/smoke_app.sh "$(ls -d $B/macos/*.app | head -1)"
           cp "$(ls $B/dmg/*.dmg | head -1)" YouTube-AI-Agent-Pro-macOS-arm64.dmg
           shasum -a 256 YouTube-AI-Agent-Pro-macOS-arm64.dmg | tee YouTube-AI-Agent-Pro-macOS-arm64.dmg.sha256
