@@ -6,12 +6,13 @@ BIN="$APP/Contents/MacOS/$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable
 "$BIN" > /tmp/yta-app.log 2>&1 &
 PID=$!
 for i in $(seq 1 120); do
-  PORT=$(lsof -nP -a -c yta-engin -iTCP -sTCP:LISTEN 2>/dev/null | awk 'NR>1{split($9,a,":"); print a[2]; exit}')
+  PORT=$( (lsof -nP -a -c yta-engin -iTCP -sTCP:LISTEN 2>/dev/null || true) | awk 'NR>1{split($9,a,":"); print a[2]; exit}')
   if [ -n "${PORT:-}" ] && curl -fsS "http://127.0.0.1:$PORT/api/health" -o /tmp/health.json; then break; fi
   sleep 1
 done
+if [ ! -s /tmp/health.json ]; then echo "app engine never became healthy"; cat /tmp/yta-app.log; exit 1; fi
 cat /tmp/health.json; echo
 grep -q '"status":"ok"' /tmp/health.json
 kill -TERM "$PID"; sleep 5
-if pgrep -f "Contents/Resources/engine/yta-engine" >/dev/null; then echo "engine still running after app quit"; exit 1; fi
+if pgrep -f "Contents/Resources/engine/yta-engine" >/dev/null 2>&1; then echo "engine still running after app quit"; exit 1; fi
 echo "APP SMOKE OK"
